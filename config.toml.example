@@ -1,0 +1,32 @@
+# TailSwitch Configuration
+# Location: ~/.config/tailswitch/config.toml
+#
+# NOTE: You usually DON'T need this config file!
+# TailSwitch automatically shows your existing tailscale profiles from `tailscale switch --list`
+#
+# Only create this config if you want to:
+# 1. Add NEW tailnets that you haven't logged into yet
+# 2. Use custom login servers (Headscale, etc.)
+# 3. Use auth keys for automation
+
+# Example: Adding a new tailnet (first time login)
+# After logging in once, it will appear in your profiles list automatically
+[[tailnets]]
+name = "person@example.com"
+
+# Example: Self-hosted Headscale server
+[[tailnets]]
+name = "headscale-network"
+login_server = "https://headscale.example.com"
+
+# Example: Automated login with auth key (no browser prompt)
+[[tailnets]]
+name = "automation-network"
+login_server = "https://login.tailscale.com"
+auth_key = "tskey-auth-xxxxxxxxxxxxx-yyyyyyyyyyyyyyyy"
+
+# HOW IT WORKS:
+# 1. TailSwitch shows ALL profiles from `tailscale switch --list` (with ★ for active)
+# 2. If you select an existing profile → instant switch (no auth needed)
+# 3. If you select a new tailnet from this config → browser opens for one-time login
+# 4. After first login, the new profile is saved and future switches are instant
