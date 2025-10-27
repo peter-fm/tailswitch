@@ -1,4 +1,4 @@
-# TailSwitch
+# Tailswitch
 
 A Rust TUI (Text User Interface) application for easily switching between Tailscale tailnets using Tailscale's fast user switching feature.
 
@@ -14,7 +14,7 @@ A Rust TUI (Text User Interface) application for easily switching between Tailsc
 
 ## How It Works
 
-TailSwitch leverages Tailscale's fast user switching feature:
+Tailswitch leverages Tailscale's fast user switching feature:
 1. Shows your existing profiles from `tailscale switch --list`
 2. Select a profile → instant switch (no authentication needed)
 3. Optionally add new tailnets through config file
@@ -79,7 +79,7 @@ cargo run
 
 ## Configuration (Optional)
 
-**Note:** You usually don't need a config file! TailSwitch automatically shows your existing Tailscale profiles.
+**Note:** You usually don't need a config file! Tailswitch automatically shows your existing Tailscale profiles.
 
 Only create `~/.config/tailswitch/config.toml` if you want to:
 - Add a NEW tailnet you haven't logged into yet
@@ -108,7 +108,7 @@ See [config.toml.example](config.toml.example) for more examples.
 
 ## Permissions
 
-Tailscale requires elevated permissions. TailSwitch automatically detects this and uses `sudo` when needed.
+Tailscale requires elevated permissions. Tailswitch automatically detects this and uses `sudo` when needed.
 
 **Recommended setup (run once):**
 ```bash
@@ -136,7 +136,7 @@ This allows you to run `tailswitch` without entering your password each time.
 ## Troubleshooting
 
 ### Browser doesn't open
-- TailSwitch uses `setsid` and environment variables to launch your browser
+- Tailswitch uses `setsid` and environment variables to launch your browser
 - If running from a TUI app like omarchy, the browser may not open automatically
 - The authentication URL is displayed in the TUI - you can manually copy and open it
 
@@ -146,7 +146,7 @@ This allows you to run `tailswitch` without entering your password each time.
 
 ### Profile not appearing
 - After logging in via browser, run `sudo tailscale switch --list` to verify the profile was created
-- TailSwitch shows profiles from this command
+- Tailswitch shows profiles from this command
 
 ## Technical Details
 
