@@ -191,6 +191,23 @@ impl TailscaleClient {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
+    /// Check if currently logged out
+    pub fn is_logged_out(&self) -> Result<bool> {
+        let mut cmd = self.create_command();
+        let output = cmd
+            .arg("status")
+            .output()
+            .context("Failed to execute tailscale status")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Check both stdout and stderr for logout indicators
+        // "Logged out." appears in stdout
+        // "Log in at:" appears in stderr
+        Ok(stdout.contains("Logged out") || stderr.contains("Log in at:"))
+    }
+
     /// Check if we need sudo
     /// On most systems, tailscale operations require root regardless of operator setting
     pub fn check_needs_sudo() -> bool {

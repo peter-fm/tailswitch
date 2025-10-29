@@ -111,13 +111,20 @@ fn main() -> Result<()> {
                 Ok(()) => {
                     println!("✓ Successfully switched to {}!", tailnet.name);
 
-                    // Show status
-                    if let Ok(status) = client.status() {
-                        println!("\nCurrent status:");
-                        println!("{}", status);
-                    }
+                    // Check if we're logged in after switching
+                    let is_logged_out = client.is_logged_out().unwrap_or(false);
 
-                    return Ok(());
+                    if is_logged_out {
+                        println!("\n⚠ Profile is logged out. Starting authentication...");
+                        // Fall through to login flow below
+                    } else {
+                        // Successfully switched and logged in
+                        if let Ok(status) = client.status() {
+                            println!("\nCurrent status:");
+                            println!("{}", status);
+                        }
+                        return Ok(());
+                    }
                 }
                 Err(e) => {
                     eprintln!("✗ Switch failed: {}", e);
