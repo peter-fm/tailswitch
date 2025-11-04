@@ -27,11 +27,9 @@ impl Config {
             return Ok(default_config);
         }
 
-        let contents = fs::read_to_string(&config_path)
-            .context("Failed to read config file")?;
+        let contents = fs::read_to_string(&config_path).context("Failed to read config file")?;
 
-        let config: Config = toml::from_str(&contents)
-            .context("Failed to parse config file")?;
+        let config: Config = toml::from_str(&contents).context("Failed to parse config file")?;
 
         Ok(config)
     }
@@ -40,22 +38,18 @@ impl Config {
         let config_path = Self::config_path()?;
 
         if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create config directory")?;
+            fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
 
-        let contents = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(&config_path, contents)
-            .context("Failed to write config file")?;
+        fs::write(&config_path, contents).context("Failed to write config file")?;
 
         Ok(())
     }
 
     fn config_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Failed to get config directory")?;
+        let config_dir = dirs::config_dir().context("Failed to get config directory")?;
         Ok(config_dir.join("tailswitch").join("config.toml"))
     }
 

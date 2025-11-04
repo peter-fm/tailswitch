@@ -34,7 +34,10 @@ impl TailscaleClient {
             .context("Failed to wait for tailscale logout")?;
 
         if !status.success() {
-            anyhow::bail!("Tailscale logout failed with exit code: {:?}", status.code());
+            anyhow::bail!(
+                "Tailscale logout failed with exit code: {:?}",
+                status.code()
+            );
         }
 
         Ok(())
@@ -149,7 +152,11 @@ impl TailscaleClient {
         }
 
         let script = if self.use_sudo {
-            format!("sudo tailscale {} > {} 2>&1 &", cmd_args.join(" "), log_file)
+            format!(
+                "sudo tailscale {} > {} 2>&1 &",
+                cmd_args.join(" "),
+                log_file
+            )
         } else {
             format!("tailscale {} > {} 2>&1 &", cmd_args.join(" "), log_file)
         };
@@ -171,11 +178,7 @@ impl TailscaleClient {
                     if let Some(start) = line.find("https://login.tailscale.com") {
                         let url_part = &line[start..];
                         // Extract just the URL (stop at whitespace)
-                        let url = url_part
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("")
-                            .to_string();
+                        let url = url_part.split_whitespace().next().unwrap_or("").to_string();
 
                         if !url.is_empty() {
                             return Ok(Some(url));
@@ -226,8 +229,7 @@ impl TailscaleClient {
     /// On most systems, tailscale operations require root regardless of operator setting
     pub fn check_needs_sudo() -> bool {
         // Check if we're already running as root or with sudo
-        std::env::var("USER").unwrap_or_default() != "root"
-            && std::env::var("SUDO_USER").is_err()
+        std::env::var("USER").unwrap_or_default() != "root" && std::env::var("SUDO_USER").is_err()
     }
 
     /// Check if tailscale is installed

@@ -3,15 +3,15 @@ use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Frame, Terminal,
 };
 use std::io;
 
@@ -38,7 +38,10 @@ struct OutputView {
 }
 
 impl App {
-    pub fn new_with_options(options: Vec<(String, Option<String>, bool, bool)>, config: Config) -> Self {
+    pub fn new_with_options(
+        options: Vec<(String, Option<String>, bool, bool)>,
+        config: Config,
+    ) -> Self {
         let mut list_state = ListState::default();
         if !options.is_empty() {
             list_state.select(Some(0));
@@ -72,76 +75,79 @@ impl App {
         result
     }
 
-    fn run_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<Option<AppAction>> {
+    fn run_loop(
+        &mut self,
+        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    ) -> Result<Option<AppAction>> {
         let mut action = None;
 
         loop {
             terminal.draw(|f| self.ui(f))?;
 
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    // If we're in output view mode, handle differently
-                    if self.output_view.is_some() {
-                        match key.code {
-                            KeyCode::Esc | KeyCode::Enter => {
-                                // Exit output view, go back to main menu
-                                self.output_view = None;
-                                // Clear any pending action and should_quit flag
-                                action = None;
-                                self.should_quit = false;
-                            }
-                            KeyCode::Char('q') => {
-                                // Exit output view and quit the app
-                                self.output_view = None;
-                                action = Some(AppAction::Quit);
-                                self.should_quit = true;
-                            }
-                            _ => {}
+            if let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                // If we're in output view mode, handle differently
+                if self.output_view.is_some() {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Enter => {
+                            // Exit output view, go back to main menu
+                            self.output_view = None;
+                            // Clear any pending action and should_quit flag
+                            action = None;
+                            self.should_quit = false;
                         }
-                    } else {
-                        // Normal navigation mode
-                        match key.code {
-                            KeyCode::Char('q') => {
-                                action = Some(AppAction::Quit);
-                                self.should_quit = true;
-                            }
-                            KeyCode::Down | KeyCode::Char('j') => {
-                                self.next();
-                            }
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                self.previous();
-                            }
-                            KeyCode::Char('u') => {
-                                // Run tailscale up with configured flags
-                                action = Some(AppAction::RunTailscaleUp);
-                                self.should_quit = true;
-                            }
-                            KeyCode::Char('s') => {
-                                // Show tailscale status - trigger action but don't quit
-                                action = Some(AppAction::ShowStatus);
-                                self.should_quit = true;
-                            }
-                            KeyCode::Char('l') => {
-                                // Logout from current profile
-                                action = Some(AppAction::Logout);
-                                self.should_quit = true;
-                            }
-                            KeyCode::Enter => {
-                                if let Some(index) = self.list_state.selected() {
-                                    if index < self.options.len() {
-                                        let (name, _, _, _) = &self.options[index];
-                                        action = Some(AppAction::SelectTailnet(Tailnet {
-                                            name: name.clone(),
-                                            login_server: None,
-                                            auth_key: None,
-                                            flags: None,
-                                        }));
-                                        self.should_quit = true;
-                                    }
-                                }
-                            }
-                            _ => {}
+                        KeyCode::Char('q') => {
+                            // Exit output view and quit the app
+                            self.output_view = None;
+                            action = Some(AppAction::Quit);
+                            self.should_quit = true;
                         }
+                        _ => {}
+                    }
+                } else {
+                    // Normal navigation mode
+                    match key.code {
+                        KeyCode::Char('q') => {
+                            action = Some(AppAction::Quit);
+                            self.should_quit = true;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            self.next();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.previous();
+                        }
+                        KeyCode::Char('u') => {
+                            // Run tailscale up with configured flags
+                            action = Some(AppAction::RunTailscaleUp);
+                            self.should_quit = true;
+                        }
+                        KeyCode::Char('s') => {
+                            // Show tailscale status - trigger action but don't quit
+                            action = Some(AppAction::ShowStatus);
+                            self.should_quit = true;
+                        }
+                        KeyCode::Char('l') => {
+                            // Logout from current profile
+                            action = Some(AppAction::Logout);
+                            self.should_quit = true;
+                        }
+                        KeyCode::Enter => {
+                            if let Some(index) = self.list_state.selected()
+                                && index < self.options.len()
+                            {
+                                let (name, _, _, _) = &self.options[index];
+                                action = Some(AppAction::SelectTailnet(Tailnet {
+                                    name: name.clone(),
+                                    login_server: None,
+                                    auth_key: None,
+                                    flags: None,
+                                }));
+                                self.should_quit = true;
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -178,7 +184,11 @@ impl App {
 
     fn render_header(&self, f: &mut Frame, area: Rect) {
         let title = Paragraph::new("TailSwitch - Tailscale Network Switcher")
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title, area);
@@ -201,7 +211,12 @@ impl App {
 
                     lines.push(Line::from(vec![
                         prefix,
-                        Span::styled(name, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            name,
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
+                        ),
                         if *is_active {
                             Span::styled(" (active)", Style::default().fg(Color::Green))
                         } else {
@@ -229,11 +244,9 @@ impl App {
             .collect();
 
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("j/k: navigate | Enter: select | u: update flags | s: status | l: logout | q: quit"),
-            )
+            .block(Block::default().borders(Borders::ALL).title(
+                "j/k: navigate | Enter: select | u: update flags | s: status | l: logout | q: quit",
+            ))
             .highlight_style(
                 Style::default()
                     .bg(Color::Blue)
@@ -245,7 +258,8 @@ impl App {
     }
 
     fn render_footer(&self, f: &mut Frame, area: Rect) {
-        let config_path = Config::get_config_path_string().unwrap_or_else(|_| "Unknown".to_string());
+        let config_path =
+            Config::get_config_path_string().unwrap_or_else(|_| "Unknown".to_string());
         let footer_text = if let Some(ref msg) = self.status_message {
             msg.clone()
         } else {
@@ -298,7 +312,8 @@ impl App {
     }
 
     pub fn get_active_tailnet_name(&self) -> Option<String> {
-        self.options.iter()
+        self.options
+            .iter()
             .find(|(_, _, _, is_active)| *is_active)
             .map(|(name, _, _, _)| name.clone())
     }
@@ -320,7 +335,11 @@ impl App {
 
         // Header
         let title = Paragraph::new(output.title.as_str())
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title, chunks[0]);
@@ -380,22 +399,22 @@ impl UrlDisplayApp {
         loop {
             terminal.draw(|f| self.ui(f))?;
 
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Enter => {
-                            self.open_browser = true;
-                            self.should_quit = true;
-                        }
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            self.should_quit = true;
-                        }
-                        KeyCode::Char('c') => {
-                            // Future: copy to clipboard
-                            self.should_quit = true;
-                        }
-                        _ => {}
+            if let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                match key.code {
+                    KeyCode::Enter => {
+                        self.open_browser = true;
+                        self.should_quit = true;
                     }
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        self.should_quit = true;
+                    }
+                    KeyCode::Char('c') => {
+                        // Future: copy to clipboard
+                        self.should_quit = true;
+                    }
+                    _ => {}
                 }
             }
 
@@ -425,7 +444,11 @@ impl UrlDisplayApp {
 
     fn render_header(&self, f: &mut Frame, area: Rect) {
         let title = Paragraph::new(format!("Authentication Required - {}", self.tailnet_name))
-            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title, area);
@@ -434,24 +457,39 @@ impl UrlDisplayApp {
     fn render_url_box(&self, f: &mut Frame, area: Rect) {
         let text = vec![
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Authentication URL:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Authentication URL:",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                &self.url,
+                Style::default().fg(Color::Green),
+            )]),
+            Line::from(""),
             Line::from(""),
             Line::from(vec![
-                Span::styled(&self.url, Style::default().fg(Color::Green)),
-            ]),
-            Line::from(""),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Please authenticate in your browser and select the ", Style::default().fg(Color::Gray)),
-                Span::styled(&self.tailnet_name, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Please authenticate in your browser and select the ",
+                    Style::default().fg(Color::Gray),
+                ),
+                Span::styled(
+                    &self.tailnet_name,
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" tailnet.", Style::default().fg(Color::Gray)),
             ]),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Tailscale is running in the background waiting for authentication...", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
-            ]),
+            Line::from(vec![Span::styled(
+                "Tailscale is running in the background waiting for authentication...",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            )]),
         ];
 
         let paragraph = Paragraph::new(text)
@@ -465,9 +503,17 @@ impl UrlDisplayApp {
             Line::from(""),
             Line::from(vec![
                 Span::styled("Press ", Style::default().fg(Color::Gray)),
-                Span::styled("Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Enter",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" to open browser  |  ", Style::default().fg(Color::Gray)),
-                Span::styled("q", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "q",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" to exit without opening", Style::default().fg(Color::Gray)),
             ]),
         ];
