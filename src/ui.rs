@@ -15,15 +15,30 @@ use ratatui::{
 };
 use std::io;
 
+pub enum AppAction {
+    SelectTailnet(Tailnet),
+    RunTailscaleUp,
+    ShowStatus,
+    Logout,
+    Quit,
+}
+
 pub struct App {
     options: Vec<(String, Option<String>, bool, bool)>, // (name, account, is_existing_profile, is_active)
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
+    _config: Config,
+    output_view: Option<OutputView>,
+}
+
+struct OutputView {
+    title: String,
+    content: String,
 }
 
 impl App {
-    pub fn new_with_options(options: Vec<(String, Option<String>, bool, bool)>) -> Self {
+    pub fn new_with_options(options: Vec<(String, Option<String>, bool, bool)>, config: Config) -> Self {
         let mut list_state = ListState::default();
         if !options.is_empty() {
             list_state.select(Some(0));
@@ -34,10 +49,12 @@ impl App {
             list_state,
             should_quit: false,
             status_message: None,
+            _config: config,
+            output_view: None,
         }
     }
 
-    pub fn run(&mut self) -> Result<Option<Tailnet>> {
+    pub fn run(&mut self) -> Result<Option<AppAction>> {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -55,38 +72,76 @@ impl App {
         result
     }
 
-    fn run_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<Option<Tailnet>> {
-        let mut selected_tailnet = None;
+    fn run_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<Option<AppAction>> {
+        let mut action = None;
 
         loop {
             terminal.draw(|f| self.ui(f))?;
 
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            self.should_quit = true;
+                    // If we're in output view mode, handle differently
+                    if self.output_view.is_some() {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => {
+                                // Exit output view, go back to main menu
+                                self.output_view = None;
+                                // Clear any pending action and should_quit flag
+                                action = None;
+                                self.should_quit = false;
+                            }
+                            KeyCode::Char('q') => {
+                                // Exit output view and quit the app
+                                self.output_view = None;
+                                action = Some(AppAction::Quit);
+                                self.should_quit = true;
+                            }
+                            _ => {}
                         }
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            self.next();
-                        }
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            self.previous();
-                        }
-                        KeyCode::Enter => {
-                            if let Some(index) = self.list_state.selected() {
-                                if index < self.options.len() {
-                                    let (name, _, _, _) = &self.options[index];
-                                    selected_tailnet = Some(Tailnet {
-                                        name: name.clone(),
-                                        login_server: None,
-                                        auth_key: None,
-                                    });
-                                    self.should_quit = true;
+                    } else {
+                        // Normal navigation mode
+                        match key.code {
+                            KeyCode::Char('q') => {
+                                action = Some(AppAction::Quit);
+                                self.should_quit = true;
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                self.next();
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                self.previous();
+                            }
+                            KeyCode::Char('u') => {
+                                // Run tailscale up with configured flags
+                                action = Some(AppAction::RunTailscaleUp);
+                                self.should_quit = true;
+                            }
+                            KeyCode::Char('s') => {
+                                // Show tailscale status - trigger action but don't quit
+                                action = Some(AppAction::ShowStatus);
+                                self.should_quit = true;
+                            }
+                            KeyCode::Char('l') => {
+                                // Logout from current profile
+                                action = Some(AppAction::Logout);
+                                self.should_quit = true;
+                            }
+                            KeyCode::Enter => {
+                                if let Some(index) = self.list_state.selected() {
+                                    if index < self.options.len() {
+                                        let (name, _, _, _) = &self.options[index];
+                                        action = Some(AppAction::SelectTailnet(Tailnet {
+                                            name: name.clone(),
+                                            login_server: None,
+                                            auth_key: None,
+                                            flags: None,
+                                        }));
+                                        self.should_quit = true;
+                                    }
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
             }
@@ -96,23 +151,29 @@ impl App {
             }
         }
 
-        Ok(selected_tailnet)
+        Ok(action)
     }
 
     fn ui(&mut self, f: &mut Frame) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(2)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(3),
-            ])
-            .split(f.area());
+        if let Some(ref output) = self.output_view {
+            // Render output view
+            self.render_output_view(f, output);
+        } else {
+            // Render normal list view
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(2)
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(3),
+                ])
+                .split(f.area());
 
-        self.render_header(f, chunks[0]);
-        self.render_tailnet_list(f, chunks[1]);
-        self.render_footer(f, chunks[2]);
+            self.render_header(f, chunks[0]);
+            self.render_tailnet_list(f, chunks[1]);
+            self.render_footer(f, chunks[2]);
+        }
     }
 
     fn render_header(&self, f: &mut Frame, area: Rect) {
@@ -171,7 +232,7 @@ impl App {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Select Tailnet (↑/↓ or j/k to navigate, Enter to select, q to quit)"),
+                    .title("j/k: navigate | Enter: select | u: update flags | s: status | l: logout | q: quit"),
             )
             .highlight_style(
                 Style::default()
@@ -224,6 +285,59 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+    }
+
+    pub fn get_selected_tailnet_name(&self) -> Option<String> {
+        self.list_state.selected().and_then(|index| {
+            if index < self.options.len() {
+                Some(self.options[index].0.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn get_active_tailnet_name(&self) -> Option<String> {
+        self.options.iter()
+            .find(|(_, _, _, is_active)| *is_active)
+            .map(|(name, _, _, _)| name.clone())
+    }
+
+    pub fn show_output(&mut self, title: String, content: String) {
+        self.output_view = Some(OutputView { title, content });
+    }
+
+    fn render_output_view(&self, f: &mut Frame, output: &OutputView) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(2)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(3),
+            ])
+            .split(f.area());
+
+        // Header
+        let title = Paragraph::new(output.title.as_str())
+            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL));
+        f.render_widget(title, chunks[0]);
+
+        // Content
+        let content = Paragraph::new(output.content.as_str())
+            .style(Style::default().fg(Color::White))
+            .block(Block::default().borders(Borders::ALL).title("Output"))
+            .wrap(ratatui::widgets::Wrap { trim: false });
+        f.render_widget(content, chunks[1]);
+
+        // Footer
+        let footer = Paragraph::new("Press Enter or Esc to go back | q to quit")
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL));
+        f.render_widget(footer, chunks[2]);
     }
 }
 

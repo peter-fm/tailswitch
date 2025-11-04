@@ -13,6 +13,7 @@ pub struct Tailnet {
     pub name: String,
     pub login_server: Option<String>,
     pub auth_key: Option<String>,
+    pub flags: Option<Vec<String>>,
 }
 
 impl Config {
@@ -71,11 +72,13 @@ impl Default for Config {
                     name: "Personal".to_string(),
                     login_server: None,
                     auth_key: None,
+                    flags: None,
                 },
                 Tailnet {
                     name: "Work".to_string(),
                     login_server: Some("https://login.tailscale.com".to_string()),
                     auth_key: None,
+                    flags: None,
                 },
             ],
         }

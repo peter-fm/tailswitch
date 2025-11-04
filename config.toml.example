@@ -8,11 +8,18 @@
 # 1. Add NEW tailnets that you haven't logged into yet
 # 2. Use custom login servers (Headscale, etc.)
 # 3. Use auth keys for automation
+# 4. Specify flags for tailscale login/up (--ssh, --accept-routes, etc.)
 
 # Example: Adding a new tailnet (first time login)
 # After logging in once, it will appear in your profiles list automatically
 [[tailnets]]
 name = "person@example.com"
+
+# Example: Adding flags for tailscale login/up (SSH support, accept routes, etc.)
+# These flags persist when you're logged out and need to re-authenticate
+[[tailnets]]
+name = "person@example.com"
+flags = ["--ssh", "--accept-routes"]
 
 # Example: Self-hosted Headscale server
 [[tailnets]]
@@ -24,6 +31,7 @@ login_server = "https://headscale.example.com"
 name = "automation-network"
 login_server = "https://login.tailscale.com"
 auth_key = "tskey-auth-xxxxxxxxxxxxx-yyyyyyyyyyyyyyyy"
+flags = ["--ssh", "--accept-routes"]
 
 # HOW IT WORKS:
 # 1. TailSwitch shows ALL profiles from `tailscale switch --list` (with ★ for active)

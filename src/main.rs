@@ -5,7 +5,7 @@ mod ui;
 use anyhow::{Context, Result};
 use config::Config;
 use tailscale::TailscaleClient;
-use ui::{App, UrlDisplayApp};
+use ui::{App, AppAction, UrlDisplayApp};
 
 fn main() -> Result<()> {
     // Check if tailscale is installed
@@ -86,13 +86,16 @@ fn main() -> Result<()> {
         }
     }
 
-    // Run the TUI with all options
-    let mut app = App::new_with_options(all_options);
-    let selected = app.run().context("Failed to run TUI")?;
+    // Run the TUI with all options in a loop
+    let mut app = App::new_with_options(all_options, config.clone());
 
-    // If a tailnet was selected, switch to it
-    if let Some(tailnet) = selected {
-        println!("Switching to tailnet: {}", tailnet.name);
+    loop {
+        let action = app.run().context("Failed to run TUI")?;
+
+        // Handle the action
+        let should_exit = match action {
+        Some(AppAction::SelectTailnet(tailnet)) => {
+            println!("Switching to tailnet: {}", tailnet.name);
 
         let client = TailscaleClient::new(needs_sudo);
 
@@ -116,7 +119,92 @@ fn main() -> Result<()> {
 
                     if is_logged_out {
                         println!("\n⚠ Profile is logged out. Starting authentication...");
-                        // Fall through to login flow below
+
+                        // Look up config for this tailnet to get flags
+                        let tailnet_with_config = if let Some(config_entry) = config.tailnets.iter()
+                            .find(|t| t.name == tailnet.name) {
+                            // Use config entry which has flags
+                            config_entry.clone()
+                        } else {
+                            // No config entry, use the selected tailnet
+                            tailnet.clone()
+                        };
+
+                        // Re-authenticate with proper flags
+                        println!("Connecting to {}...", tailnet_with_config.name);
+                        println!("Starting authentication process...");
+
+                        match client.login_and_get_url(&tailnet_with_config).context("Failed to start tailscale connection")? {
+                            Some(url) => {
+                                // We got an auth URL - show it in a TUI
+                                println!("Authentication URL received. Opening URL display...");
+
+                                let mut url_app = UrlDisplayApp::new(url.clone(), tailnet_with_config.name.clone());
+                                let should_open_browser = url_app.run().context("Failed to run URL display")?;
+
+                                if should_open_browser {
+                                    println!("Opening browser...");
+                                    let script_content = format!(
+                                        r#"#!/bin/sh
+export DISPLAY="${{DISPLAY:-:0}}"
+export WAYLAND_DISPLAY="${{WAYLAND_DISPLAY:-wayland-0}}"
+export XDG_RUNTIME_DIR="${{XDG_RUNTIME_DIR:-/run/user/$(id -u)}}"
+export DBUS_SESSION_BUS_ADDRESS="${{DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}}"
+exec chromium '{}' >/dev/null 2>&1 &
+"#,
+                                        url.replace("'", "'\\''")
+                                    );
+
+                                    let script_path = "/tmp/tailswitch-open-browser.sh";
+                                    if let Err(e) = std::fs::write(script_path, script_content) {
+                                        eprintln!("✗ Failed to create browser script: {}", e);
+                                        eprintln!("\nPlease manually open this URL in your browser:");
+                                        eprintln!("{}", url);
+                                    } else {
+                                        let _ = std::process::Command::new("chmod")
+                                            .arg("+x")
+                                            .arg(script_path)
+                                            .status();
+
+                                        let result = std::process::Command::new("setsid")
+                                            .arg("-f")
+                                            .arg(script_path)
+                                            .spawn();
+
+                                        match result {
+                                            Ok(_) => {
+                                                std::thread::sleep(std::time::Duration::from_millis(1000));
+                                                println!("✓ Browser launch initiated!");
+                                                println!("✓ Please complete authentication in your browser.");
+                                                println!("✓ Select the '{}' tailnet when prompted.", tailnet_with_config.name);
+                                                println!("\nTailscale is running in the background.");
+                                                println!("Run 'tailscale status' in a few moments to verify connection.");
+                                                println!("\nIf browser didn't open, manually open this URL:");
+                                                println!("{}", url);
+                                            }
+                                            Err(e) => {
+                                                eprintln!("✗ Failed to launch browser: {}", e);
+                                                eprintln!("\nPlease manually open this URL in your browser:");
+                                                eprintln!("{}", url);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    println!("Exited without opening browser.");
+                                    println!("You can manually open this URL to complete authentication:");
+                                    println!("{}", url);
+                                    println!("\nTailscale is still running in the background waiting for authentication.");
+                                }
+                            }
+                            None => {
+                                println!("Successfully connected to {}!", tailnet_with_config.name);
+                                if let Ok(status) = client.status() {
+                                    println!("\nCurrent status:");
+                                    println!("{}", status);
+                                }
+                            }
+                        }
+                        return Ok(());
                     } else {
                         // Successfully switched and logged in
                         if let Ok(status) = client.status() {
@@ -230,8 +318,83 @@ exec chromium '{}' >/dev/null 2>&1 &
                 }
             }
         }
-    } else {
-        println!("No tailnet selected. Exiting.");
+            true // Exit after switching
+        }
+        Some(AppAction::RunTailscaleUp) => {
+            // Get the currently selected tailnet name
+            let tailnet_name = match app.get_selected_tailnet_name()
+                .or_else(|| app.get_active_tailnet_name()) {
+                Some(name) => name,
+                None => {
+                    app.show_output("Error".to_string(), "No tailnet selected or active".to_string());
+                    continue;
+                }
+            };
+
+            // Look up config for this tailnet to get flags
+            let tailnet_config = config.tailnets.iter()
+                .find(|t| t.name == tailnet_name)
+                .cloned()
+                .unwrap_or_else(|| config::Tailnet {
+                    name: tailnet_name.clone(),
+                    login_server: None,
+                    auth_key: None,
+                    flags: None,
+                });
+
+            let client = TailscaleClient::new(needs_sudo);
+
+            let output = match client.run_up(&tailnet_config) {
+                Ok(()) => {
+                    let mut result = format!("✓ Successfully updated connection settings for '{}'!\n", tailnet_name);
+                    if let Some(ref flags) = tailnet_config.flags {
+                        result.push_str(&format!("\nApplied flags: {}\n", flags.join(" ")));
+                    }
+
+                    // Show status
+                    if let Ok(status) = client.status() {
+                        result.push_str("\n");
+                        result.push_str(&status);
+                    }
+                    result
+                }
+                Err(e) => {
+                    format!("✗ Failed to run tailscale up: {}", e)
+                }
+            };
+
+            app.show_output(format!("Tailscale Up - {}", tailnet_name), output);
+            false // Don't exit, show output
+        }
+        Some(AppAction::ShowStatus) => {
+            let client = TailscaleClient::new(needs_sudo);
+            let output = match client.status() {
+                Ok(status) => status,
+                Err(e) => format!("✗ Failed to get status: {}", e),
+            };
+
+            app.show_output("Tailscale Status".to_string(), output);
+            false // Don't exit, show output
+        }
+        Some(AppAction::Logout) => {
+            let client = TailscaleClient::new(needs_sudo);
+
+            let output = match client.logout() {
+                Ok(()) => "✓ Successfully logged out!".to_string(),
+                Err(e) => format!("✗ Failed to logout: {}", e),
+            };
+
+            app.show_output("Logout".to_string(), output);
+            false // Don't exit, show output
+        }
+        Some(AppAction::Quit) | None => {
+            true // Exit
+        }
+        };
+
+        if should_exit {
+            break;
+        }
     }
 
     Ok(())

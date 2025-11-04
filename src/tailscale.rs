@@ -107,6 +107,13 @@ impl TailscaleClient {
             }
             cmd.arg("--auth-key").arg(auth_key);
 
+            // Add custom flags if specified
+            if let Some(ref flags) = tailnet.flags {
+                for flag in flags {
+                    cmd.arg(flag);
+                }
+            }
+
             let status = cmd
                 .spawn()
                 .context("Failed to execute tailscale up")?
@@ -132,6 +139,13 @@ impl TailscaleClient {
         if let Some(ref server) = tailnet.login_server {
             cmd_args.push("--login-server".to_string());
             cmd_args.push(server.clone());
+        }
+
+        // Add custom flags if specified
+        if let Some(ref flags) = tailnet.flags {
+            for flag in flags {
+                cmd_args.push(flag.clone());
+            }
         }
 
         let script = if self.use_sudo {
@@ -224,5 +238,38 @@ impl TailscaleClient {
             .context("Failed to check if tailscale is installed")?;
 
         Ok(output.status.success())
+    }
+
+    /// Run tailscale up with configured flags
+    pub fn run_up(&self, tailnet: &Tailnet) -> Result<()> {
+        let mut cmd = self.create_command();
+        cmd.arg("up");
+
+        if let Some(ref server) = tailnet.login_server {
+            cmd.arg("--login-server").arg(server);
+        }
+
+        if let Some(ref auth_key) = tailnet.auth_key {
+            cmd.arg("--auth-key").arg(auth_key);
+        }
+
+        // Add custom flags if specified
+        if let Some(ref flags) = tailnet.flags {
+            for flag in flags {
+                cmd.arg(flag);
+            }
+        }
+
+        let status = cmd
+            .spawn()
+            .context("Failed to execute tailscale up")?
+            .wait()
+            .context("Failed to wait for tailscale up")?;
+
+        if !status.success() {
+            anyhow::bail!("Tailscale up failed with exit code: {:?}", status.code());
+        }
+
+        Ok(())
     }
 }
