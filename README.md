@@ -116,6 +116,13 @@ login_server = "https://headscale.example.com"
 name = "automation"
 auth_key = "tskey-auth-xxxxx"
 flags = ["--ssh", "--accept-routes", "--advertise-exit-node"]
+
+# Activation/deactivation hooks - run commands when switching
+# Great for services that should only run on specific tailnets
+[[tailnets]]
+name = "personal@example.com"
+on_activate = ["tailscale serve --bg 8080"]   # Enable when switching TO
+on_deactivate = ["tailscale serve reset"]      # Disable when switching AWAY
 ```
 
 See [config.toml.example](config.toml.example) for more examples.
@@ -185,6 +192,22 @@ flags = ["--ssh", "--accept-routes"]
 ```
 
 Then press `u` in the TUI to apply these flags immediately.
+
+### Activation/Deactivation Hooks
+
+Run commands automatically when switching between tailnets. Perfect for:
+- Enabling Tailscale Serve only on your personal tailnet
+- Starting/stopping services that depend on specific networks
+- Cleaning up state when leaving a tailnet
+
+```toml
+[[tailnets]]
+name = "personal@example.com"
+on_activate = ["tailscale serve --bg 8080", "notify-send 'Personal tailnet active'"]
+on_deactivate = ["tailscale serve reset"]
+```
+
+Hooks run in order. If a hook fails, subsequent hooks still run (with warnings shown).
 
 ### Re-authentication After Expiration
 

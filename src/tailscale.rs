@@ -225,11 +225,30 @@ impl TailscaleClient {
         Ok(stdout.contains("Logged out") || stderr.contains("Log in at:"))
     }
 
-    /// Check if we need sudo
-    /// On most systems, tailscale operations require root regardless of operator setting
+    /// Check if we need sudo by testing if tailscale commands work without it
     pub fn check_needs_sudo() -> bool {
-        // Check if we're already running as root or with sudo
-        std::env::var("USER").unwrap_or_default() != "root" && std::env::var("SUDO_USER").is_err()
+        // If already root or running with sudo, no need for sudo
+        if std::env::var("USER").unwrap_or_default() == "root"
+            || std::env::var("SUDO_USER").is_ok()
+        {
+            return false;
+        }
+
+        // Try running a tailscale command that requires permissions
+        // If operator is set, this will succeed without sudo
+        let output = Command::new("tailscale")
+            .arg("switch")
+            .arg("--list")
+            .output();
+
+        match output {
+            Ok(out) => {
+                // Check if the command succeeded or if we got an access denied error
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                stderr.contains("Access denied") || stderr.contains("permission denied")
+            }
+            Err(_) => true, // If we can't even run the command, assume we need sudo
+        }
     }
 
     /// Check if tailscale is installed

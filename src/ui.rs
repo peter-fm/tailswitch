@@ -143,6 +143,8 @@ impl App {
                                     login_server: None,
                                     auth_key: None,
                                     flags: None,
+                                    on_activate: None,
+                                    on_deactivate: None,
                                 }));
                                 self.should_quit = true;
                             }

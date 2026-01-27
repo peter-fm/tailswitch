@@ -3,9 +3,47 @@ mod tailscale;
 mod ui;
 
 use anyhow::{Context, Result};
-use config::Config;
+use config::{Config, Tailnet};
 use tailscale::TailscaleClient;
 use ui::{App, AppAction, UrlDisplayApp};
+
+/// Run hook commands (on_activate or on_deactivate)
+fn run_hooks(hooks: &[String], hook_type: &str, _tailnet_name: &str, needs_sudo: bool) {
+    for cmd in hooks {
+        println!("  Running {} hook: {}", hook_type, cmd);
+        let result = if needs_sudo {
+            // Run hook with sudo to match tailscale permissions
+            std::process::Command::new("sudo")
+                .arg("sh")
+                .arg("-c")
+                .arg(cmd)
+                .status()
+        } else {
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg(cmd)
+                .status()
+        };
+        match result {
+            Ok(status) if status.success() => {
+                println!("  ✓ Hook completed successfully");
+            }
+            Ok(status) => {
+                eprintln!("  ⚠ Hook exited with status: {}", status);
+            }
+            Err(e) => {
+                eprintln!("  ✗ Failed to run hook: {}", e);
+            }
+        }
+    }
+}
+
+/// Find tailnet config by name (matches if name contains the search string)
+fn find_tailnet_config<'a>(config: &'a Config, name: &str) -> Option<&'a Tailnet> {
+    config.tailnets.iter().find(|t| {
+        name.contains(&t.name) || t.name.contains(name)
+    })
+}
 
 fn main() -> Result<()> {
     // Check if tailscale is installed
@@ -113,11 +151,30 @@ fn main() -> Result<()> {
                 if profile_exists {
                     // Profile exists - use fast switching
                     println!("Found existing profile for '{}'", tailnet.name);
+
+                    // Run on_deactivate hooks for the previous tailnet
+                    if let Some(ref prev_name) = active_tailnet {
+                        if let Some(prev_config) = find_tailnet_config(&config, prev_name) {
+                            if let Some(ref hooks) = prev_config.on_deactivate {
+                                println!("Running deactivation hooks for '{}'...", prev_name);
+                                run_hooks(hooks, "on_deactivate", prev_name, needs_sudo);
+                            }
+                        }
+                    }
+
                     println!("Switching...");
 
                     match client.switch_to(&tailnet.name) {
                         Ok(()) => {
                             println!("✓ Successfully switched to {}!", tailnet.name);
+
+                            // Run on_activate hooks for the new tailnet
+                            if let Some(new_config) = find_tailnet_config(&config, &tailnet.name) {
+                                if let Some(ref hooks) = new_config.on_activate {
+                                    println!("Running activation hooks for '{}'...", tailnet.name);
+                                    run_hooks(hooks, "on_activate", &tailnet.name, needs_sudo);
+                                }
+                            }
 
                             // Check if we're logged in after switching
                             let is_logged_out = client.is_logged_out().unwrap_or(false);
@@ -418,6 +475,8 @@ exec chromium '{}' >/dev/null 2>&1 &
                         login_server: None,
                         auth_key: None,
                         flags: None,
+                        on_activate: None,
+                        on_deactivate: None,
                     });
 
                 let client = TailscaleClient::new(needs_sudo);

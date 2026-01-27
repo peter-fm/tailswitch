@@ -14,6 +14,10 @@ pub struct Tailnet {
     pub login_server: Option<String>,
     pub auth_key: Option<String>,
     pub flags: Option<Vec<String>>,
+    /// Commands to run when switching TO this tailnet
+    pub on_activate: Option<Vec<String>>,
+    /// Commands to run when switching AWAY FROM this tailnet
+    pub on_deactivate: Option<Vec<String>>,
 }
 
 impl Config {
@@ -67,12 +71,16 @@ impl Default for Config {
                     login_server: None,
                     auth_key: None,
                     flags: None,
+                    on_activate: None,
+                    on_deactivate: None,
                 },
                 Tailnet {
                     name: "Work".to_string(),
                     login_server: Some("https://login.tailscale.com".to_string()),
                     auth_key: None,
                     flags: None,
+                    on_activate: None,
+                    on_deactivate: None,
                 },
             ],
         }

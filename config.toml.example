@@ -33,6 +33,14 @@ login_server = "https://login.tailscale.com"
 auth_key = "tskey-auth-xxxxxxxxxxxxx-yyyyyyyyyyyyyyyy"
 flags = ["--ssh", "--accept-routes"]
 
+# Example: Activation/deactivation hooks
+# Run commands when switching TO or FROM a tailnet
+# Useful for enabling/disabling services that should only run on specific tailnets
+[[tailnets]]
+name = "personal@example.com"
+on_activate = ["tailscale serve --bg 8080"]      # Enable when switching TO this tailnet
+on_deactivate = ["tailscale serve reset"]         # Disable when switching AWAY
+
 # HOW IT WORKS:
 # 1. TailSwitch shows ALL profiles from `tailscale switch --list` (with ★ for active)
 # 2. If you select an existing profile → instant switch (no auth needed)
